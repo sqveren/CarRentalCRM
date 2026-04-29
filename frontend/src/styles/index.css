@@ -1,0 +1,12 @@
+@import './fonts.css';
+@import './tailwind.css';
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f9fafb;
+}
+
+* {
+  box-sizing: border-box;
+}
