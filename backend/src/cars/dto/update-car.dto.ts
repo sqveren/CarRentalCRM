@@ -26,6 +26,10 @@ export class UpdateCarDto {
   @IsOptional()
   status?: (typeof carStatuses)[number];
 
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
+
   @IsInt()
   @IsOptional()
   categoryId?: number;

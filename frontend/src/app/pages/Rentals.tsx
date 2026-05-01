@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Eye, Plus } from "lucide-react";
+import { CheckCircle, Eye, Plus } from "lucide-react";
 import { Link } from "react-router";
 import {
   ApiCar,
@@ -7,10 +7,11 @@ import {
   ApiEmployee,
   ApiRental,
   ApiService,
-  RentalStatus,
+  CarStatus,
   carsApi,
   clientsApi,
   employeesApi,
+  getAuthSession,
   rentalsApi,
   servicesApi,
   toDateInputValue,
@@ -27,8 +28,6 @@ type RentalFormState = {
   startDate: string;
   endDate: string;
   startMileage: string;
-  endMileage: string;
-  status: RentalStatus;
   serviceIds: number[];
 };
 
@@ -39,25 +38,46 @@ const initialFormData = (): RentalFormState => ({
   startDate: "",
   endDate: "",
   startMileage: "",
-  endMileage: "",
-  status: "pending",
   serviceIds: [],
 });
 
+type ReturnFormState = {
+  endMileage: string;
+  carStatus: Exclude<CarStatus, "rented">;
+  paymentAmount: string;
+  fineAmount: string;
+  fineDescription: string;
+};
+
+const initialReturnFormData = (): ReturnFormState => ({
+  endMileage: "",
+  carStatus: "available",
+  paymentAmount: "",
+  fineAmount: "",
+  fineDescription: "",
+});
+
 export default function Rentals() {
+  const session = getAuthSession();
+  const role = session?.employee.role ?? "operator";
+  const canCreateRental = role === "admin" || role === "manager";
+  const canCompleteRental = role === "admin" || role === "operator";
   const [rentals, setRentals] = useState<ApiRental[]>([]);
   const [cars, setCars] = useState<ApiCar[]>([]);
   const [clients, setClients] = useState<ApiClient[]>([]);
   const [employees, setEmployees] = useState<ApiEmployee[]>([]);
   const [services, setServices] = useState<ApiService[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [returningRental, setReturningRental] = useState<ApiRental | null>(null);
   const [formData, setFormData] = useState<RentalFormState>(initialFormData);
+  const [returnFormData, setReturnFormData] = useState<ReturnFormState>(initialReturnFormData);
   const [currentPage, setCurrentPage] = useState(1);
   const [error, setError] = useState("");
   const itemsPerPage = 10;
 
   useEffect(() => {
     void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadData() {
@@ -65,10 +85,10 @@ export default function Rentals() {
       setError("");
       const [rentalsData, carsData, clientsData, employeesData, servicesData] = await Promise.all([
         rentalsApi.list(),
-        carsApi.list(),
-        clientsApi.list(),
-        employeesApi.list(),
-        servicesApi.list(),
+        canCreateRental ? carsApi.list() : Promise.resolve([]),
+        canCreateRental ? clientsApi.list() : Promise.resolve([]),
+        role === "admin" ? employeesApi.list() : Promise.resolve([]),
+        canCreateRental ? servicesApi.list() : Promise.resolve([]),
       ]);
 
       setRentals(rentalsData);
@@ -90,12 +110,11 @@ export default function Rentals() {
       await rentalsApi.create({
         clientId: Number(formData.clientId),
         carId: Number(formData.carId),
-        employeeId: Number(formData.employeeId),
+        employeeId: role === "manager" ? session?.employee.id ?? 0 : Number(formData.employeeId),
         startDate: formData.startDate,
         endDate: formData.endDate,
         startMileage: formData.startMileage === "" ? undefined : Number(formData.startMileage),
-        endMileage: formData.endMileage === "" ? undefined : Number(formData.endMileage),
-        status: formData.status,
+        status: "active",
         serviceIds: formData.serviceIds,
       });
 
@@ -106,14 +125,51 @@ export default function Rentals() {
     }
   }
 
+  async function handleReturnSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!returningRental) {
+      return;
+    }
+
+    try {
+      setError("");
+      await rentalsApi.returnCar(returningRental.id, {
+        endMileage: Number(returnFormData.endMileage),
+        carStatus: returnFormData.carStatus,
+        paymentAmount: returnFormData.paymentAmount === "" ? undefined : Number(returnFormData.paymentAmount),
+        fineAmount: returnFormData.fineAmount === "" ? undefined : Number(returnFormData.fineAmount),
+        fineDescription: returnFormData.fineDescription || undefined,
+      });
+      await loadData();
+      closeReturnModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process return.");
+    }
+  }
+
   function closeModal() {
     setIsModalOpen(false);
     setFormData(initialFormData());
   }
 
+  function openReturnModal(rental: ApiRental) {
+    setReturningRental(rental);
+    setReturnFormData({
+      ...initialReturnFormData(),
+      endMileage: String(rental.endMileage ?? rental.car?.mileage ?? ""),
+      paymentAmount: rental.totalPrice ? String(toNumber(rental.totalPrice)) : "",
+    });
+  }
+
+  function closeReturnModal() {
+    setReturningRental(null);
+    setReturnFormData(initialReturnFormData());
+  }
+
   const totalPages = Math.ceil(rentals.length / itemsPerPage);
   const paginatedRentals = rentals.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const availableCars = cars.filter((car) => car.status === "available");
+  const selectedCar = cars.find((car) => car.id === Number(formData.carId));
 
   return (
     <div className="p-8">
@@ -122,13 +178,15 @@ export default function Rentals() {
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Rentals Management</h1>
           <p className="text-gray-600">Track and manage all rental bookings</p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          Create Rental
-        </button>
+        {canCreateRental ? (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={20} />
+            Create Rental
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -185,6 +243,15 @@ export default function Rentals() {
                         <Eye size={18} />
                         View
                       </Link>
+                      {canCompleteRental && rental.status !== "completed" ? (
+                        <button
+                          onClick={() => openReturnModal(rental)}
+                          className="ml-3 text-green-600 hover:text-green-700 inline-flex items-center gap-1"
+                        >
+                          <CheckCircle size={18} />
+                          Return
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -218,7 +285,7 @@ export default function Rentals() {
         )}
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={closeModal} title="Create New Rental">
+      {canCreateRental ? <Modal isOpen={isModalOpen} onClose={closeModal} title="Create New Rental">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Client</label>
@@ -237,7 +304,7 @@ export default function Rentals() {
             </select>
           </div>
 
-          <div>
+          {role === "admin" ? <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label>
             <select
               value={formData.employeeId}
@@ -252,23 +319,35 @@ export default function Rentals() {
                 </option>
               ))}
             </select>
-          </div>
+          </div> : null}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Car</label>
             <select
               value={formData.carId}
-              onChange={(e) => setFormData({ ...formData, carId: e.target.value })}
+              onChange={(e) => {
+                const car = cars.find((item) => item.id === Number(e.target.value));
+                setFormData({
+                  ...formData,
+                  carId: e.target.value,
+                  startMileage: car?.mileage != null ? String(car.mileage) : "",
+                });
+              }}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             >
               <option value="">Select a car</option>
-              {availableCars.map((car) => (
-                <option key={car.id} value={car.id}>
-                  {car.brand} {car.model} - ${toNumber(car.category?.pricePerDay).toLocaleString()}/day
+              {cars.map((car) => (
+                <option key={car.id} value={car.id} disabled={car.status !== "available"}>
+                  {car.brand} {car.model} - {car.status} - ${toNumber(car.category?.pricePerDay).toLocaleString()}/day
                 </option>
               ))}
             </select>
+            {cars.length > 0 && !cars.some((car) => car.status === "available") ? (
+              <p className="mt-2 text-sm text-red-600">
+                No available cars. Complete an active rental first or add a new available car.
+              </p>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -295,42 +374,19 @@ export default function Rentals() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Start Mileage</label>
-              <input
-                type="number"
-                value={formData.startMileage}
-                onChange={(e) => setFormData({ ...formData, startMileage: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="0"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">End Mileage</label>
-              <input
-                type="number"
-                value={formData.endMileage}
-                onChange={(e) => setFormData({ ...formData, endMileage: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="0"
-              />
-            </div>
-          </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-            <select
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as RentalStatus })}
+            <label className="block text-sm font-medium text-gray-700 mb-2">Start Mileage</label>
+            <input
+              type="number"
+              value={formData.startMileage}
+              onChange={(e) => setFormData({ ...formData, startMileage: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="pending">Pending</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
+              min="0"
+              readOnly={Boolean(selectedCar)}
+            />
+            <p className="mt-2 text-sm text-gray-500">
+              Start mileage is taken from the selected car. End mileage is recorded only during vehicle return.
+            </p>
           </div>
 
           <div>
@@ -368,6 +424,91 @@ export default function Rentals() {
             <button
               type="button"
               onClick={closeModal}
+              className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </Modal> : null}
+
+      <Modal isOpen={Boolean(returningRental)} onClose={closeReturnModal} title="Complete Vehicle Return">
+        <form onSubmit={handleReturnSubmit} className="space-y-4">
+          <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
+            Rental #{returningRental?.id} - {returningRental?.car ? `${returningRental.car.brand} ${returningRental.car.model}` : "Selected car"}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">End Mileage</label>
+            <input
+              type="number"
+              value={returnFormData.endMileage}
+              onChange={(e) => setReturnFormData({ ...returnFormData, endMileage: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min={returningRental?.startMileage ?? 0}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Vehicle Condition</label>
+            <select
+              value={returnFormData.carStatus}
+              onChange={(e) => setReturnFormData({ ...returnFormData, carStatus: e.target.value as Exclude<CarStatus, "rented"> })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="available">Available</option>
+              <option value="cleaning">Needs cleaning</option>
+              <option value="maintenance">Needs maintenance</option>
+              <option value="damaged">Damaged</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Payment Amount ($)</label>
+            <input
+              type="number"
+              value={returnFormData.paymentAmount}
+              onChange={(e) => setReturnFormData({ ...returnFormData, paymentAmount: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              step="0.01"
+              min="0.01"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Fine Amount ($)</label>
+              <input
+                type="number"
+                value={returnFormData.fineAmount}
+                onChange={(e) => setReturnFormData({ ...returnFormData, fineAmount: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                step="0.01"
+                min="0.01"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Fine Description</label>
+              <input
+                value={returnFormData.fineDescription}
+                onChange={(e) => setReturnFormData({ ...returnFormData, fineDescription: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Damage, late return..."
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="submit"
+              className="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
+            >
+              Complete Return
+            </button>
+            <button
+              type="button"
+              onClick={closeReturnModal}
               className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors"
             >
               Cancel

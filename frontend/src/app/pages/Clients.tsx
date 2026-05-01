@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Edit, Plus, Search, Trash2 } from "lucide-react";
-import { ApiClient, clientsApi } from "../api";
+import { Edit, History, Plus, Search, Trash2 } from "lucide-react";
+import { ApiClient, clientsApi, getAuthSession, toDateTimeLabel, toNumber } from "../api";
+import Badge from "../components/Badge";
 import Modal from "../components/Modal";
 
 type ClientFormState = {
@@ -20,9 +21,11 @@ const initialFormData = (): ClientFormState => ({
 });
 
 export default function Clients() {
+  const isAdmin = getAuthSession()?.employee.role === "admin";
   const [clients, setClients] = useState<ApiClient[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<ApiClient | null>(null);
+  const [historyClient, setHistoryClient] = useState<ApiClient | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [formData, setFormData] = useState<ClientFormState>(initialFormData);
   const [currentPage, setCurrentPage] = useState(1);
@@ -101,6 +104,10 @@ export default function Clients() {
     setFormData(initialFormData());
   }
 
+  function openHistory(client: ApiClient) {
+    setHistoryClient(client);
+  }
+
   const query = searchQuery.toLowerCase();
   const filteredClients = clients.filter((client) =>
     client.firstName.toLowerCase().includes(query) ||
@@ -174,12 +181,23 @@ export default function Clients() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{client.documentNumber ?? "N/A"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <div className="flex gap-2">
-                      <button onClick={() => handleEdit(client)} className="text-blue-600 hover:text-blue-700">
-                        <Edit size={18} />
+                      <button
+                        onClick={() => openHistory(client)}
+                        className="text-green-600 hover:text-green-700"
+                        title="Rental history"
+                      >
+                        <History size={18} />
                       </button>
-                      <button onClick={() => void handleDelete(client.id)} className="text-red-600 hover:text-red-700">
-                        <Trash2 size={18} />
-                      </button>
+                      {isAdmin ? (
+                        <>
+                        <button onClick={() => handleEdit(client)} className="text-blue-600 hover:text-blue-700">
+                          <Edit size={18} />
+                        </button>
+                        <button onClick={() => void handleDelete(client.id)} className="text-red-600 hover:text-red-700">
+                          <Trash2 size={18} />
+                        </button>
+                        </>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -288,6 +306,50 @@ export default function Clients() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(historyClient)}
+        onClose={() => setHistoryClient(null)}
+        title={historyClient ? `${historyClient.firstName} ${historyClient.lastName} - Rental History` : "Rental History"}
+      >
+        <div className="space-y-4">
+          {historyClient?.rentals?.length ? (
+            historyClient.rentals.map((rental) => (
+              <div key={rental.id} className="rounded-lg border border-gray-200 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {rental.car ? `${rental.car.brand} ${rental.car.model}` : "Car not available"}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {toDateTimeLabel(rental.startDate)} - {toDateTimeLabel(rental.endDate)}
+                    </p>
+                  </div>
+                  <Badge status={rental.status} variant="rental" />
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
+                  <div>Total: ${toNumber(rental.totalPrice).toLocaleString()}</div>
+                  <div>Payments: ${toNumber(rental.payments?.reduce((sum, payment) => sum + toNumber(payment.amount), 0)).toLocaleString()}</div>
+                  <div>Start mileage: {rental.startMileage ?? "N/A"}</div>
+                  <div>End mileage: {rental.endMileage ?? "N/A"}</div>
+                </div>
+                {rental.rentalServices?.length ? (
+                  <p className="mt-3 text-sm text-gray-600">
+                    Services: {rental.rentalServices.map((item) => item.service?.name).filter(Boolean).join(", ")}
+                  </p>
+                ) : null}
+                {rental.fines?.length ? (
+                  <p className="mt-2 text-sm text-red-600">
+                    Fines: {rental.fines.map((fine) => `${fine.description ?? "Fine"} ($${toNumber(fine.amount)})`).join(", ")}
+                  </p>
+                ) : null}
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-gray-600">This client has no rental history yet.</p>
+          )}
+        </div>
       </Modal>
     </div>
   );

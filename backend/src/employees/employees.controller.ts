@@ -1,9 +1,11 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { Roles } from '../auth/roles.decorator';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { EmployeesService } from './employees.service';
 
 @Controller('employees')
+@Roles('admin')
 export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
 

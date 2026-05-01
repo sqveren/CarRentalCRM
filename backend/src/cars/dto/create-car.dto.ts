@@ -25,6 +25,10 @@ export class CreateCarDto {
   @IsOptional()
   status?: (typeof carStatuses)[number];
 
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
+
   @IsInt()
   categoryId!: number;
 }

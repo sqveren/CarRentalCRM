@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Edit, Plus, Trash2 } from "lucide-react";
-import { ApiCar, ApiCarCategory, CarStatus, carsApi, categoriesApi, toNumber } from "../api";
+import { Edit, Gauge, Plus, Tag, Trash2 } from "lucide-react";
+import { ApiCar, ApiCarCategory, CarStatus, carsApi, categoriesApi, getAuthSession, toNumber } from "../api";
 import Badge from "../components/Badge";
 import Modal from "../components/Modal";
 
@@ -10,6 +10,7 @@ type CarFormState = {
   manufactureYear: number;
   mileage: number;
   status: CarStatus;
+  imageUrl: string;
   categoryId: string;
 };
 
@@ -19,14 +20,17 @@ const initialFormData = (): CarFormState => ({
   manufactureYear: new Date().getFullYear(),
   mileage: 0,
   status: "available",
+  imageUrl: "",
   categoryId: "",
 });
 
 export default function Cars() {
+  const isAdmin = getAuthSession()?.employee.role === "admin";
   const [cars, setCars] = useState<ApiCar[]>([]);
   const [categories, setCategories] = useState<ApiCarCategory[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCar, setEditingCar] = useState<ApiCar | null>(null);
+  const [selectedCar, setSelectedCar] = useState<ApiCar | null>(null);
   const [formData, setFormData] = useState<CarFormState>(initialFormData);
   const [currentPage, setCurrentPage] = useState(1);
   const [error, setError] = useState("");
@@ -34,12 +38,16 @@ export default function Cars() {
 
   useEffect(() => {
     void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadData() {
     try {
       setError("");
-      const [carsData, categoriesData] = await Promise.all([carsApi.list(), categoriesApi.list()]);
+      const [carsData, categoriesData] = await Promise.all([
+        carsApi.list(),
+        isAdmin ? categoriesApi.list() : Promise.resolve([]),
+      ]);
       setCars(carsData);
       setCategories(categoriesData);
     } catch (err) {
@@ -59,6 +67,7 @@ export default function Cars() {
         manufactureYear: formData.manufactureYear,
         mileage: formData.mileage,
         status: formData.status,
+        imageUrl: formData.imageUrl || null,
         categoryId: Number(formData.categoryId),
       };
 
@@ -83,6 +92,7 @@ export default function Cars() {
       manufactureYear: car.manufactureYear,
       mileage: car.mileage,
       status: car.status,
+      imageUrl: car.imageUrl ?? "",
       categoryId: String(car.categoryId),
     });
     setIsModalOpen(true);
@@ -108,6 +118,26 @@ export default function Cars() {
     setFormData(initialFormData());
   }
 
+  function renderCarVisual(car: ApiCar, className = "h-full w-full") {
+    if (car.imageUrl) {
+      return (
+        <img
+          src={car.imageUrl}
+          alt={`${car.brand} ${car.model}`}
+          className={`${className} object-cover`}
+        />
+      );
+    }
+
+    return (
+      <div className={`${className} flex flex-col justify-center bg-[radial-gradient(circle_at_20%_20%,#dbeafe,transparent_32%),linear-gradient(135deg,#0f172a,#2563eb)] p-8 text-white`}>
+        <p className="text-sm font-medium uppercase tracking-[0.35em] text-white/60">{car.category?.name ?? "Fleet"}</p>
+        <p className="mt-4 text-4xl font-black">{car.brand}</p>
+        <p className="text-2xl font-semibold text-white/80">{car.model}</p>
+      </div>
+    );
+  }
+
   const totalPages = Math.ceil(cars.length / itemsPerPage);
   const paginatedCars = cars.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
@@ -118,13 +148,15 @@ export default function Cars() {
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Cars Management</h1>
           <p className="text-gray-600">Manage your fleet of vehicles</p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={20} />
-          Add Car
-        </button>
+        {isAdmin ? (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={20} />
+            Add Car
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -133,53 +165,90 @@ export default function Cars() {
         </div>
       ) : null}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Brand</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Model</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mileage</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price/Day</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {paginatedCars.map((car) => (
-                <tr key={car.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{car.brand}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{car.model}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{car.manufactureYear}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{car.mileage.toLocaleString()} km</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{car.category?.name ?? "Unknown"}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ${toNumber(car.category?.pricePerDay).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <Badge status={car.status} variant="car" />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <div className="flex gap-2">
-                      <button onClick={() => handleEdit(car)} className="text-blue-600 hover:text-blue-700">
-                        <Edit size={18} />
-                      </button>
-                      <button onClick={() => void handleDelete(car.id)} className="text-red-600 hover:text-red-700">
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        {paginatedCars.map((car) => (
+          <button
+            key={car.id}
+            type="button"
+            onClick={() => setSelectedCar(car)}
+            className="group overflow-hidden rounded-2xl border border-gray-200 bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+          >
+            <div className="relative h-56 overflow-hidden bg-gray-100">
+              <div className="h-full w-full transition duration-500 group-hover:scale-105">
+                {renderCarVisual(car)}
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+              <div className="absolute left-4 top-4">
+                <Badge status={car.status} variant="car" />
+              </div>
+              {isAdmin ? (
+                <div className="absolute right-4 top-4 flex gap-2">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleEdit(car);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.stopPropagation();
+                        handleEdit(car);
+                      }
+                    }}
+                    className="rounded-full bg-white/90 p-2 text-blue-600 shadow hover:bg-white"
+                  >
+                    <Edit size={18} />
+                  </span>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDelete(car.id);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.stopPropagation();
+                        void handleDelete(car.id);
+                      }
+                    }}
+                    className="rounded-full bg-white/90 p-2 text-red-600 shadow hover:bg-white"
+                  >
+                    <Trash2 size={18} />
+                  </span>
+                </div>
+              ) : null}
+              <div className="absolute bottom-4 left-4 right-4">
+                <p className="text-sm font-medium uppercase tracking-wide text-white/75">
+                  {car.category?.name ?? "Unknown category"}
+                </p>
+                <h2 className="text-2xl font-bold text-white">
+                  {car.brand} {car.model}
+                </h2>
+              </div>
+            </div>
 
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200">
+            <div className="grid grid-cols-3 gap-3 p-5 text-sm">
+              <div>
+                <p className="text-gray-500">Year</p>
+                <p className="font-semibold text-gray-900">{car.manufactureYear}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Mileage</p>
+                <p className="font-semibold text-gray-900">{car.mileage.toLocaleString()} km</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Per day</p>
+                <p className="font-semibold text-gray-900">${toNumber(car.category?.pricePerDay).toLocaleString()}</p>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between rounded-xl border border-gray-200 bg-white px-6 py-4">
             <p className="text-sm text-gray-600">
               Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, cars.length)} of {cars.length} cars
             </p>
@@ -200,10 +269,92 @@ export default function Cars() {
               </button>
             </div>
           </div>
-        )}
-      </div>
+      )}
 
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingCar ? "Edit Car" : "Add New Car"}>
+      <Modal
+        isOpen={Boolean(selectedCar)}
+        onClose={() => setSelectedCar(null)}
+        title={selectedCar ? `${selectedCar.brand} ${selectedCar.model}` : "Car Details"}
+      >
+        {selectedCar ? (
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-xl bg-gray-100">
+              {renderCarVisual(selectedCar, "h-72 w-full")}
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Vehicle #{selectedCar.id}</p>
+                <h3 className="text-2xl font-bold text-gray-900">
+                  {selectedCar.brand} {selectedCar.model}
+                </h3>
+              </div>
+              <Badge status={selectedCar.status} variant="car" />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 p-4">
+                <p className="text-sm text-gray-500">Manufacture Year</p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">{selectedCar.manufactureYear}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Gauge size={18} />
+                  <p className="text-sm">Mileage</p>
+                </div>
+                <p className="mt-1 text-lg font-semibold text-gray-900">{selectedCar.mileage.toLocaleString()} km</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Tag size={18} />
+                  <p className="text-sm">Category</p>
+                </div>
+                <p className="mt-1 text-lg font-semibold text-gray-900">{selectedCar.category?.name ?? "Unknown"}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 p-4">
+                <p className="text-sm text-gray-500">Rental Price</p>
+                <p className="mt-1 text-lg font-semibold text-gray-900">
+                  ${toNumber(selectedCar.category?.pricePerDay).toLocaleString()} / day
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
+              {selectedCar.status === "available"
+                ? "This vehicle is available for new rentals."
+                : "This vehicle is not available for a new rental until its status changes to available."}
+            </div>
+
+            {isAdmin ? (
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCar(null);
+                    handleEdit(selectedCar);
+                  }}
+                  className="flex-1 rounded-lg bg-blue-600 py-2 font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  Edit Car
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = selectedCar.id;
+                    setSelectedCar(null);
+                    void handleDelete(id);
+                  }}
+                  className="flex-1 rounded-lg bg-red-50 py-2 font-medium text-red-700 transition-colors hover:bg-red-100"
+                >
+                  Delete Car
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
+
+      {isAdmin ? <Modal isOpen={isModalOpen} onClose={closeModal} title={editingCar ? "Edit Car" : "Add New Car"}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -259,6 +410,20 @@ export default function Cars() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Image URL (optional)</label>
+            <input
+              type="url"
+              value={formData.imageUrl}
+              onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="https://example.com/car-photo.jpg"
+            />
+            <p className="mt-2 text-sm text-gray-500">
+              Paste a direct image link. If empty, the system shows a generated placeholder.
+            </p>
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
             <select
               value={formData.categoryId}
@@ -306,7 +471,7 @@ export default function Cars() {
             </button>
           </div>
         </form>
-      </Modal>
+      </Modal> : null}
     </div>
   );
 }

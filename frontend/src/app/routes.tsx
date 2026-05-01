@@ -6,6 +6,8 @@ import Clients from "./pages/Clients";
 import Rentals from "./pages/Rentals";
 import RentalDetails from "./pages/RentalDetails";
 import Services from "./pages/Services";
+import Employees from "./pages/Employees";
+import CarCategories from "./pages/CarCategories";
 import Payments from "./pages/Payments";
 import Fines from "./pages/Fines";
 import Login from "./pages/Login";
@@ -25,6 +27,8 @@ export const router = createBrowserRouter([
     Component: Layout,
     children: [
       { index: true, Component: Dashboard },
+      { path: "employees", Component: Employees },
+      { path: "car-categories", Component: CarCategories },
       { path: "cars", Component: Cars },
       { path: "clients", Component: Clients },
       { path: "rentals", Component: Rentals },

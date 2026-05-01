@@ -1,25 +1,45 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Car } from "lucide-react";
+import { UserRole, authApi, setAuthSession } from "../api";
 
 export default function Register() {
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
-    email: "",
+    login: "",
+    role: "manager" as UserRole,
     password: "",
     confirmPassword: "",
   });
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple mock registration
-    localStorage.setItem("isAuthenticated", "true");
-    navigate("/");
+
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    try {
+      setError("");
+      const session = await authApi.register({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        login: formData.login,
+        password: formData.password,
+        role: formData.role,
+      });
+      setAuthSession(session);
+      navigate("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create employee account.");
+    }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -36,6 +56,12 @@ export default function Register() {
         <p className="text-center text-gray-600 mb-8">Register as a new employee</p>
         
         <form onSubmit={handleSubmit} className="space-y-5">
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
@@ -69,19 +95,36 @@ export default function Register() {
           </div>
           
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              Email
+            <label htmlFor="login" className="block text-sm font-medium text-gray-700 mb-2">
+              Login
             </label>
             <input
-              id="email"
-              name="email"
-              type="email"
-              value={formData.email}
+              id="login"
+              name="login"
+              type="text"
+              value={formData.login}
               onChange={handleChange}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="employee@company.com"
+              placeholder="manager1"
               required
             />
+          </div>
+
+          <div>
+            <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
+              Role
+            </label>
+            <select
+              id="role"
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="admin">Admin</option>
+              <option value="manager">Manager</option>
+              <option value="operator">Operator</option>
+            </select>
           </div>
           
           <div>
@@ -124,9 +167,9 @@ export default function Register() {
         
         <p className="text-center text-gray-600 mt-6">
           Already have an account?{" "}
-          <a href="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link to="/login" className="text-blue-600 hover:text-blue-700 font-medium">
             Sign In
-          </a>
+          </Link>
         </p>
       </div>
     </div>

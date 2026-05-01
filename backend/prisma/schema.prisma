@@ -13,6 +13,8 @@ enum CarStatus {
   maintenance
   cleaning
   damaged
+
+  @@map("car_status")
 }
 
 model Role {
@@ -64,6 +66,7 @@ model Car {
   manufactureYear Int?         @map("manufacture_year")
   mileage         Int?         @default(0)
   status          CarStatus    @default(available)
+  imageUrl        String?      @map("image_url") @db.VarChar(500)
   categoryId      Int          @map("category_id")
   category        CarCategory  @relation(fields: [categoryId], references: [id])
   rentals         Rental[]

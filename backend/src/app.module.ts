@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { AuthModule } from './auth/auth.module';
+import { RolesGuard } from './auth/roles.guard';
 import { CarCategoriesModule } from './car-categories/car-categories.module';
 import { ConfigModule } from '@nestjs/config';
 import { CarsModule } from './cars/cars.module';
@@ -19,6 +22,7 @@ import { validateEnvironment } from './config/env.validation';
       validate: validateEnvironment,
     }),
     PrismaModule,
+    AuthModule,
     RolesModule,
     EmployeesModule,
     CarCategoriesModule,
@@ -28,6 +32,12 @@ import { validateEnvironment } from './config/env.validation';
     PaymentsModule,
     ServicesModule,
     FinesModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
   ],
 })
 export class AppModule {}

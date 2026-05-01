@@ -36,6 +36,7 @@ export class CarsService {
         manufactureYear: createCarDto.manufactureYear,
         mileage: createCarDto.mileage ?? 0,
         status: createCarDto.status ?? 'available',
+        imageUrl: createCarDto.imageUrl,
         categoryId: createCarDto.categoryId,
       },
       include: {
@@ -53,6 +54,7 @@ export class CarsService {
         manufactureYear: updateCarDto.manufactureYear,
         mileage: updateCarDto.mileage,
         status: updateCarDto.status,
+        imageUrl: updateCarDto.imageUrl,
         categoryId: updateCarDto.categoryId,
       },
       include: {

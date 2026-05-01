@@ -7,8 +7,36 @@ import { UpdateClientDto } from './dto/update-client.dto';
 export class ClientsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private readonly clientInclude = {
+    rentals: {
+      include: {
+        car: {
+          include: {
+            category: true,
+          },
+        },
+        employee: {
+          include: {
+            role: true,
+          },
+        },
+        payments: true,
+        fines: true,
+        rentalServices: {
+          include: {
+            service: true,
+          },
+        },
+      },
+      orderBy: {
+        startDate: 'desc' as const,
+      },
+    },
+  };
+
   async findAll() {
     return this.prisma.client.findMany({
+      include: this.clientInclude,
       orderBy: {
         id: 'asc',
       },
@@ -18,6 +46,7 @@ export class ClientsService {
   async findOne(id: number) {
     return this.prisma.client.findUniqueOrThrow({
       where: { id },
+      include: this.clientInclude,
     });
   }
 

@@ -3,6 +3,7 @@ type Environment = {
   PORT?: string;
   FRONTEND_URL?: string;
   NODE_ENV?: string;
+  AUTH_SECRET?: string;
 };
 
 export function validateEnvironment(config: Record<string, unknown>): Environment {
@@ -17,5 +18,6 @@ export function validateEnvironment(config: Record<string, unknown>): Environmen
     PORT: env.PORT ?? '3001',
     FRONTEND_URL: env.FRONTEND_URL ?? 'http://localhost:5173',
     NODE_ENV: env.NODE_ENV ?? 'development',
+    AUTH_SECRET: env.AUTH_SECRET ?? 'local-dev-secret',
   };
 }

@@ -1,9 +1,13 @@
 import { Outlet, Link, useLocation, useNavigate } from "react-router";
-import { LayoutDashboard, Car, Users, FileText, Wrench, CreditCard, AlertTriangle, LogOut } from "lucide-react";
+import { LayoutDashboard, Car, Users, FileText, Wrench, CreditCard, AlertTriangle, LogOut, UserCog, Tags } from "lucide-react";
 import { useEffect } from "react";
+import { clearAuthSession, getAuthSession } from "../api";
+import { canAccessPath } from "../access";
 
 const navItems = [
   { path: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { path: "/employees", icon: UserCog, label: "Employees" },
+  { path: "/car-categories", icon: Tags, label: "Car Categories" },
   { path: "/cars", icon: Car, label: "Cars" },
   { path: "/clients", icon: Users, label: "Clients" },
   { path: "/rentals", icon: FileText, label: "Rentals" },
@@ -15,18 +19,28 @@ const navItems = [
 export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const session = getAuthSession();
+  const role = session?.employee.role;
 
   useEffect(() => {
-    const isAuthenticated = localStorage.getItem("isAuthenticated");
-    if (!isAuthenticated) {
+    if (!session) {
       navigate("/login");
+      return;
     }
-  }, [navigate]);
+
+    if (!canAccessPath(session.employee.role, location.pathname)) {
+      navigate("/");
+    }
+  }, [location.pathname, navigate, session]);
 
   const handleLogout = () => {
-    localStorage.removeItem("isAuthenticated");
+    clearAuthSession();
     navigate("/login");
   };
+
+  if (!session || !role) {
+    return null;
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -34,10 +48,13 @@ export default function Layout() {
       <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
         <div className="p-6 border-b border-gray-200">
           <h1 className="text-xl font-semibold text-gray-900">Car Rental Admin</h1>
+          <p className="mt-1 text-sm capitalize text-gray-500">
+            {session.employee.firstName} {session.employee.lastName} - {role}
+          </p>
         </div>
         
         <nav className="flex-1 p-4 space-y-1">
-          {navItems.map((item) => {
+          {navItems.filter((item) => canAccessPath(role, item.path)).map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path || (item.path !== "/" && location.pathname.startsWith(item.path));
             

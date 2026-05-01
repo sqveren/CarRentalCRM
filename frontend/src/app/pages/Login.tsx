@@ -1,17 +1,25 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Car } from "lucide-react";
+import { authApi, setAuthSession } from "../api";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple mock authentication
-    localStorage.setItem("isAuthenticated", "true");
-    navigate("/");
+
+    try {
+      setError("");
+      const session = await authApi.login({ login, password });
+      setAuthSession(session);
+      navigate("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sign in.");
+    }
   };
 
   return (
@@ -27,17 +35,23 @@ export default function Login() {
         <p className="text-center text-gray-600 mb-8">Sign in to your account</p>
         
         <form onSubmit={handleSubmit} className="space-y-6">
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          ) : null}
+
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              Email
+            <label htmlFor="login" className="block text-sm font-medium text-gray-700 mb-2">
+              Login
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="login"
+              type="text"
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="employee@company.com"
+              placeholder="admin"
               required
             />
           </div>
@@ -67,9 +81,9 @@ export default function Login() {
         
         <p className="text-center text-gray-600 mt-6">
           Don't have an account?{" "}
-          <a href="/register" className="text-blue-600 hover:text-blue-700 font-medium">
+          <Link to="/register" className="text-blue-600 hover:text-blue-700 font-medium">
             Register
-          </a>
+          </Link>
         </p>
       </div>
     </div>

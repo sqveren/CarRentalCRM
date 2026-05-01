@@ -1,12 +1,60 @@
 const API_BASE_URL = process.env.REACT_APP_API_URL ?? "http://localhost:3001";
 
+export type UserRole = "admin" | "manager" | "operator";
+
+export interface AuthEmployee {
+  id: number;
+  firstName: string;
+  lastName: string;
+  login: string;
+  role: UserRole;
+}
+
+export interface AuthSession {
+  token: string;
+  employee: AuthEmployee;
+}
+
+const SESSION_STORAGE_KEY = "authSession";
+
+export function getAuthSession(): AuthSession | null {
+  const rawSession = localStorage.getItem(SESSION_STORAGE_KEY);
+
+  if (!rawSession) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawSession) as AuthSession;
+  } catch {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return null;
+  }
+}
+
+export function setAuthSession(session: AuthSession): void {
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  localStorage.setItem("isAuthenticated", "true");
+}
+
+export function clearAuthSession(): void {
+  localStorage.removeItem(SESSION_STORAGE_KEY);
+  localStorage.removeItem("isAuthenticated");
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const session = getAuthSession();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (session) {
+    headers.Authorization = `Bearer ${session.token}`;
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
     ...init,
+    headers,
   });
 
   if (!response.ok) {
@@ -78,6 +126,7 @@ export interface ApiCar {
   manufactureYear: number;
   mileage: number;
   status: CarStatus;
+  imageUrl: string | null;
   categoryId: number;
   category?: ApiCarCategory;
 }
@@ -89,6 +138,7 @@ export interface ApiClient {
   phone: string | null;
   email: string | null;
   documentNumber: string | null;
+  rentals?: ApiRental[];
 }
 
 export interface ApiPayment {
@@ -141,6 +191,8 @@ export interface ApiRental {
   car?: ApiCar;
   employee?: ApiEmployee;
   rentalServices?: ApiRentalService[];
+  payments?: ApiPayment[];
+  fines?: ApiFine[];
 }
 
 export interface ApiFine {
@@ -151,8 +203,45 @@ export interface ApiFine {
   rental?: ApiRental;
 }
 
+export const authApi = {
+  login: (data: { login: string; password: string }) =>
+    request<AuthSession>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  register: (data: {
+    firstName: string;
+    lastName: string;
+    login: string;
+    password: string;
+    role: UserRole;
+  }) =>
+    request<AuthSession>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+};
+
+export const rolesApi = {
+  list: () => request<ApiRole[]>("/roles"),
+};
+
 export const categoriesApi = {
   list: () => request<ApiCarCategory[]>("/car-categories"),
+  create: (data: { name: string; pricePerDay: number }) =>
+    request<ApiCarCategory>("/car-categories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (id: number, data: Partial<{ name: string; pricePerDay: number }>) =>
+    request<ApiCarCategory>(`/car-categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  remove: (id: number) =>
+    request<ApiCarCategory>(`/car-categories/${id}`, {
+      method: "DELETE",
+    }),
 };
 
 export const carsApi = {
@@ -163,6 +252,7 @@ export const carsApi = {
     manufactureYear: number;
     mileage: number;
     status: CarStatus;
+    imageUrl?: string | null;
     categoryId: number;
   }) =>
     request<ApiCar>("/cars", {
@@ -177,6 +267,7 @@ export const carsApi = {
       manufactureYear: number;
       mileage: number;
       status: CarStatus;
+      imageUrl?: string | null;
       categoryId: number;
     }>,
   ) =>
@@ -225,6 +316,35 @@ export const clientsApi = {
 
 export const employeesApi = {
   list: () => request<ApiEmployee[]>("/employees"),
+  create: (data: {
+    firstName: string;
+    lastName: string;
+    roleId: number;
+    login: string;
+    passwordHash: string;
+  }) =>
+    request<ApiEmployee>("/employees", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (
+    id: number,
+    data: Partial<{
+      firstName: string;
+      lastName: string;
+      roleId: number;
+      login: string;
+      passwordHash: string;
+    }>,
+  ) =>
+    request<ApiEmployee>(`/employees/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  remove: (id: number) =>
+    request<ApiEmployee>(`/employees/${id}`, {
+      method: "DELETE",
+    }),
 };
 
 export const rentalsApi = {
@@ -243,6 +363,38 @@ export const rentalsApi = {
   }) =>
     request<ApiRental>("/rentals", {
       method: "POST",
+      body: JSON.stringify(data),
+    }),
+  update: (
+    id: number,
+    data: Partial<{
+      clientId: number;
+      carId: number;
+      employeeId: number;
+      startDate: string;
+      endDate: string;
+      startMileage?: number;
+      endMileage?: number;
+      status?: RentalStatus;
+      serviceIds?: number[];
+    }>,
+  ) =>
+    request<ApiRental>(`/rentals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  returnCar: (
+    id: number,
+    data: {
+      endMileage: number;
+      carStatus: Exclude<CarStatus, "rented">;
+      paymentAmount?: number;
+      fineAmount?: number;
+      fineDescription?: string;
+    },
+  ) =>
+    request<ApiRental>(`/rentals/${id}/return`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     }),
 };
